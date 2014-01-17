@@ -3,20 +3,19 @@ test a failover scenario
 should lose no data (atomic set/get or pub/sub) during the failover.
 
 to use this,
-  - start a redis master on 5379
-  - start a redis slave on 5380
-  - start a redis sentinel on 8379, talking to the master
+  - make sure that ports 5379, 5380, and 8379 are free and open to localhost
   - ./node_modules/.bin/mocha --ui tdd --reporter spec --bail test/test-failover
 */
 
 var should = require('should'),
     RedisSentinel = require('../index'),
     redis = require('redis'),
-    pidHelpers = require('./pid-helpers'),
+    procHelpers = require('./pid-helpers'),
     async = require('async'),
     events = require('events'),
     util = require('util'),
     child_process = require('child_process'),
+    fs = require('fs'),
     _suite
 
 
@@ -24,19 +23,20 @@ suite('sentinel failover', function(){
   
   // (want setup to run once, using BDD-style `before`)
   before( function(done){
+    this.timeout(20000);
     console.log('SETUP')
 
     _suite = this;
 
-    this.events = new events.EventEmitter;
+    _suite.events = new events.EventEmitter;
 
-    this.hashKey = "test-sentinel-" + Math.round(Math.random() * 1000000);
-    console.log("Using test hash", this.hashKey)
+    _suite.hashKey = "test-sentinel-" + Math.round(Math.random() * 1000000);
+    console.log("Using test hash", _suite.hashKey)
 
-    this.errorLog = []
-    this.ignoreErrors = false;
+    _suite.errorLog = []
+    _suite.ignoreErrors = false;
 
-    this.emitError = function emitError(error){
+    _suite.emitError = function emitError(error){
       if (! _suite.ignoreErrors) {
         _suite.errorLog.push(error)
         _suite.events.emit('error', error);
@@ -49,10 +49,34 @@ suite('sentinel failover', function(){
       throw error;
     })
 
-    this.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.master = child_process.spawn('redis-server', ['--port', '5379', '--loglevel',  'notice', '--save', '""']);  
+    _suite.slave = child_process.spawn('redis-server', ['--port', '5380', '--loglevel',  'notice', '--save', '""', '--slaveof', 'localhost', '5379']);  
+
+    sentinelConf = fs.openSync('./tmp/sentinel.conf', 'w');
+    fs.writeSync(sentinelConf,
+                   'port 8379\n' +
+                   'sentinel monitor mymaster 127.0.0.1 5379 1\n' + 
+                   'sentinel down-after-milliseconds mymaster 5000\n' +
+                   'sentinel failover-timeout mymaster 6000\n' +
+                   'sentinel parallel-syncs mymaster 1\n');
+    fs.closeSync(sentinelConf);
+    _suite.sentinel = child_process.spawn('redis-sentinel', ['./tmp/sentinel.conf']);
+    //_suite.sentinel.stdout.on('data', function(data) {
+    //  console.log('sentinel0: ' + data);
+    //});
+    //_suite.sentinel.stderr.on('data', function(data) {
+    //  console.log('sentinel0: ' + data);
+    //});
+
+
+    //wait for cluster to be up and running
+    setTimeout(function(){
+
+
+    _suite.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
 
     // catch & log events
-    this.eventLog = [];
+    _suite.eventLog = [];
 
     ['error', 'reconnecting', 'end', 'drain', 'ready', 'connect',
      'down-start', 'failover-start', 'failover-end', 'reconnected'].forEach(function(eventName){
@@ -73,7 +97,7 @@ suite('sentinel failover', function(){
     });
 
 
-    this.waitForEvent = function(eventName, callback){
+    _suite.waitForEvent = function(eventName, callback){
       // already happened?
       if (_suite.eventLog.indexOf(eventName) > -1) {
         callback()
@@ -87,7 +111,7 @@ suite('sentinel failover', function(){
     }
 
 
-    this.doAtomicIO = function doAtomicIO(ioCount) {
+    _suite.doAtomicIO = function doAtomicIO(ioCount) {
       console.log("-- set", ioCount)
       
       var n = ioCount.toString(),
@@ -121,7 +145,7 @@ suite('sentinel failover', function(){
       })
     }
 
-    this.checkIntegrity = function checkIntegrity(values, lastValue){
+    _suite.checkIntegrity = function checkIntegrity(values, lastValue){
       var i, missing = [];
       for (i = 1; i <= lastValue; i++) {
         if (Array.isArray(values)){   // array by value
@@ -136,15 +160,15 @@ suite('sentinel failover', function(){
     }
 
 
-    this.receivedPubs = []
-    this.pubChannel = "test-sentinel-channel-" + Math.round(Math.random() * 1000000)
-    console.log("Test pub/sub channel", this.pubChannel)
+    _suite.receivedPubs = []
+    _suite.pubChannel = "test-sentinel-channel-" + Math.round(Math.random() * 1000000)
+    console.log("Test pub/sub channel", _suite.pubChannel)
 
-    this.subscriberClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.subscriberClient = RedisSentinel.createClient(8379, '127.0.0.1');
 
-    this.subscriberClient.on('error', this.emitError);
+    _suite.subscriberClient.on('error', _suite.emitError);
 
-    this.subscriberClient.once('ready', function(){
+    _suite.subscriberClient.once('ready', function(){
       _suite.subscriberClient.subscribe(_suite.pubChannel)
       _suite.subscriberClient.on('message', function(channel, message){
         if (channel === _suite.pubChannel) {
@@ -155,7 +179,7 @@ suite('sentinel failover', function(){
       })
     })
 
-    this.doPub = function doPub(ioCount){
+    _suite.doPub = function doPub(ioCount){
       console.log("-- pub", ioCount);
       var n = ioCount.toString();
       _suite.sentinelClient.publish(_suite.pubChannel, n, function(error, receivedBy){
@@ -175,40 +199,17 @@ suite('sentinel failover', function(){
       }
     ], done)
 
+    }, 10000);
   }); //setup
 
+    after(function(){
 
-  test('redis servers are running as expected', function(done){
-    // this assumes redis-server daemons are launched w/ these particular args!
-    async.series({
-      master: function(ok){
-        pidHelpers.findPid(['redis-server', '--port 5379'], ok)
-      },
-      slave: function(ok){
-        pidHelpers.findPid(['redis-server', '--port 5380', 'slaveof'], ok)
-      },
-      sentinel: function(ok){
-        pidHelpers.findPid(['redis-server', '--sentinel'], ok)
-      }
-    }, function(error, pids){
-      if (error) return _suite.emitError(error)
+      _suite.master.kill();
+      _suite.slave.kill();
+      _suite.sentinel.kill();
 
-      should.exist(pids.master.length)
-      pids.master.length.should.equal(1)
+    });
   
-      should.exist(pids.slave.length)
-      pids.slave.length.should.equal(1)
-
-      should.exist(pids.sentinel.length)
-      pids.sentinel.length.should.equal(1)
-
-      // use later
-      _suite.pids = pids;
-
-      done()
-    })
-  })
-
 
   // sanity check
   suite('helpers', function(){
@@ -259,47 +260,16 @@ suite('sentinel failover', function(){
     })
 
 
-    test('kill master', function(done){
+    test('kill master', function(){
       this.timeout(30000)
 
       this.ignoreErrors = true;
 
-      if (!this.pids || !this.pids.master || isNaN(this.pids.master[0].pid)) {
-        return done(new Error("Missing master PID from setup"))
-      }
-
       console.warn("*** FAILOVER CAN TAKE A WHILE, DON'T QUIT TOO SOON ***");
 
-      var masterPid = this.pids.master[0].pid
-      console.log("Killing master pid", masterPid)
+      console.log("Killing master")
 
-      async.series({
-        killMaster: function(next){
-          child_process.exec("kill " + masterPid, function(error, stdout, stderr) {
-            if (error) return next(error)
-            else if (stderr.trim() !== '') return next(new Error(stderr.trim()))
-            else next()
-          })
-        },
-        wait: function(next){
-          // 1s buffer to make sure
-          setTimeout(next, 1000)
-        },
-        confirm: function(next){
-          pidHelpers.findPid(['redis-server', '--port 5379'], function(error, pids){
-            if (error) return next(error)
-            // console.log('new pids', pids)
-            should.equal(pids.length, 0, 'master pid gone')
-
-            console.log("... should failover now!")
-            next()
-          })
-        }
-      }, function(error){
-        ///if(error){ console.log('--- got error', error) }
-        done(error)
-      })
-
+      _suite.master.kill();
     })
 
     test('should get \'down-start\'', function(done){
@@ -312,10 +282,6 @@ suite('sentinel failover', function(){
     // and other params (e.g.) in sentinel.conf
     // ... 45s is very long and should suffice in a reasonable setup.
 
-    test('should get \'failover-start\'', function(done){
-      this.timeout(45000)
-      this.waitForEvent('failover-start', done)
-    })
 
     test('should get \'failover-end\'', function(done){
       this.timeout(45000)
