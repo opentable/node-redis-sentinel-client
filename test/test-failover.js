@@ -10,12 +10,13 @@ to use this,
 var should = require('should'),
     RedisSentinel = require('../index'),
     redis = require('redis'),
-    procHelpers = require('./pid-helpers'),
+    pidHelpers = require('./pid-helpers'),
     async = require('async'),
     events = require('events'),
     util = require('util'),
     child_process = require('child_process'),
     fs = require('fs'),
+    redisVersion = process.env.REDIS_VERSION,
     _suite
 
 
@@ -24,55 +25,73 @@ suite('sentinel failover', function(){
   // (want setup to run once, using BDD-style `before`)
   before( function(done){
     this.timeout(20000);
-    console.log('SETUP')
-
     _suite = this;
+    
+    function setup(){
+      console.log('SETUP')
 
-    _suite.events = new events.EventEmitter;
+      _suite.events = new events.EventEmitter;
 
-    _suite.hashKey = "test-sentinel-" + Math.round(Math.random() * 1000000);
-    console.log("Using test hash", _suite.hashKey)
+      _suite.hashKey = "test-sentinel-" + Math.round(Math.random() * 1000000);
+      console.log("Using test hash", _suite.hashKey)
 
-    _suite.errorLog = []
-    _suite.ignoreErrors = false;
+      _suite.errorLog = []
+      _suite.ignoreErrors = false;
 
-    _suite.emitError = function emitError(error){
-      if (! _suite.ignoreErrors) {
-        _suite.errorLog.push(error)
-        _suite.events.emit('error', error);
+      _suite.emitError = function emitError(error){
+        if (! _suite.ignoreErrors) {
+          _suite.errorLog.push(error)
+          _suite.events.emit('error', error);
+        }
       }
+
+      // crash whatever test is running.
+      // (if it gets here, it wasn't deliberately ignored.)
+      _suite.events.on('error', function(error){
+        throw error;
+      })
+      killOldRedises();
     }
 
-    // crash whatever test is running.
-    // (if it gets here, it wasn't deliberately ignored.)
-    _suite.events.on('error', function(error){
-      throw error;
-    })
+    function killOldRedises(){
+      async.series([
+      function(ok){
+        pidHelpers.killPid(['redis-server', '5379'], ok)
+      },
+      function(ok){
+        pidHelpers.killPid(['redis-server', '5380'], ok)
+      },
+      function(ok){
+        pidHelpers.killPid(['redis-sentinel', '8379'], ok)
+      }
+    ], function(error, pids){
+        if (error) return _suite.emitError(error)
 
-    _suite.master = child_process.spawn('redis-server', ['--port', '5379', '--loglevel',  'notice', '--save', '""']);  
-    _suite.slave = child_process.spawn('redis-server', ['--port', '5380', '--loglevel',  'notice', '--save', '""', '--slaveof', 'localhost', '5379']);  
+        setTimeout(startCluster, 1000);
+      });
+    }
 
-    sentinelConf = fs.openSync('./tmp/sentinel.conf', 'w');
-    fs.writeSync(sentinelConf,
-                   'port 8379\n' +
-                   'sentinel monitor mymaster 127.0.0.1 5379 1\n' + 
-                   'sentinel down-after-milliseconds mymaster 5000\n' +
-                   'sentinel failover-timeout mymaster 6000\n' +
-                   'sentinel parallel-syncs mymaster 1\n');
-    fs.closeSync(sentinelConf);
-    _suite.sentinel = child_process.spawn('redis-sentinel', ['./tmp/sentinel.conf']);
-    //_suite.sentinel.stdout.on('data', function(data) {
-    //  console.log('sentinel0: ' + data);
-    //});
-    //_suite.sentinel.stderr.on('data', function(data) {
-    //  console.log('sentinel0: ' + data);
-    //});
+    function startCluster(){
 
+      var redisServer = './tmp/redis-' + redisVersion + '/src/redis-server';
+      var redisSentinel = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
+      _suite.master = child_process.spawn(redisServer, ['--port', '5379', '--save', '""']);  
+      _suite.slave = child_process.spawn(redisServer, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);  
 
-    //wait for cluster to be up and running
-    setTimeout(function(){
+      sentinelConf = fs.openSync('./tmp/sentinel.conf', 'w');
+      fs.writeSync(sentinelConf,
+                     'port 8379\n' +
+                     'sentinel monitor mymaster 127.0.0.1 5379 1\n' + 
+                     'sentinel down-after-milliseconds mymaster 5000\n' +
+                     'sentinel failover-timeout mymaster 6000\n' +
+                     'sentinel parallel-syncs mymaster 1\n');
+      fs.closeSync(sentinelConf);
+      _suite.sentinel = child_process.spawn(redisSentinel, ['./tmp/sentinel.conf']);
 
+    setTimeout(finishBeforeHook, 10000);
+    }
 
+    function finishBeforeHook(){
     _suite.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
 
     // catch & log events
@@ -186,7 +205,6 @@ suite('sentinel failover', function(){
         if (error) _suite.emitError(error)
       })
     }
-
     // wait for clients to be ready
     async.parallel([
       function(ready){
@@ -199,7 +217,9 @@ suite('sentinel failover', function(){
       }
     ], done)
 
-    }, 10000);
+    }
+
+    setup();
   }); //setup
 
     after(function(){
