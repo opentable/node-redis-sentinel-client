@@ -16,7 +16,10 @@
   "devDependencies": {
     "mocha": "*",
     "should": "*",
-    "async": "*"
+    "async": "*",
+    "grunt-cli": "~0.1.11",
+    "grunt": "~0.4.2",
+    "grunt-shell": "~0.6.1"
   },
   "keywords": [
     "redis",
