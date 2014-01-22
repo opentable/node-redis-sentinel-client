@@ -79,12 +79,15 @@ Now use `sentinelClient` as a regular client: `set`, `get`, `hmset`, etc.
 There are currently 2 tests, run with [Mocha](https://github.com/visionmedia/mocha):
 
 1. I/O test: Basic usage, compatibility with RedisClient in functional state.  
-  - Run with `npm test`.
 2. Failover test: With a master on 5379, slave on 5380, and sentinel on 8379,
 this verifies that the SentinelClient connects to the new master,
 and buffers all IO, including pub/sub, not losing any data integrity during the failover.  
-  - Run with `./node_modules/.bin/mocha --ui tdd --reporter spec --bail test/test-failover`  
-(The failover test is isolated from the other, so it doesn't break the normal IO tests.)
+
+``` bash
+  export REDIS_VERSION=2.8.4 # or the version you would like to build against
+  ./node_modules/.bin/grunt getRedis
+  npm test
+```
 
 
 ## Limitations
