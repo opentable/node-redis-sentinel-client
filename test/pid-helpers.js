@@ -9,7 +9,7 @@ var child_process = require('child_process')
 /*
 @param patterns: array of, or single, regex pattern(s) or string(s). (has to match all)
 */
-module.exports.killPid = function findPid(patterns, callback){
+module.exports.killProc = function killProc(patterns, callback){
 
   child_process.exec('ps -e -o pid,command', function(error, stdout, stderr){
     if (error) return callback(error)
@@ -61,7 +61,7 @@ module.exports.killPid = function findPid(patterns, callback){
   
     if(procs[0]){ 
       var killString = 'kill ' + procs.join(' ');
-      console.log(killString);
+      console.log('killing process ' + killString);
       child_process.exec(killString, callback); 
     } else {
       callback();

@@ -56,13 +56,13 @@ suite('sentinel failover', function(){
     function killOldRedises(){
       async.series([
       function(ok){
-        pidHelpers.killPid(['redis-server', '5379'], ok)
+        pidHelpers.killProc(['redis-server', '5379'], ok)
       },
       function(ok){
-        pidHelpers.killPid(['redis-server', '5380'], ok)
+        pidHelpers.killProc(['redis-server', '5380'], ok)
       },
       function(ok){
-        pidHelpers.killPid(['redis-sentinel', '8379'], ok)
+        pidHelpers.killProc(['redis-sentinel', '8379'], ok)
       }
     ], function(error, pids){
         if (error) return _suite.emitError(error)
@@ -72,6 +72,8 @@ suite('sentinel failover', function(){
     }
 
     function startCluster(){
+
+      console.log('Starting Redises');
 
       var redisServer = './tmp/redis-' + redisVersion + '/src/redis-server';
       var redisSentinel = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
