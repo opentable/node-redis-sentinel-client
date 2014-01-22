@@ -1,0 +1,5 @@
+language: node_js
+node_js:
+  - "0.10.24"
+env: REDIS_VERSION=2.8.4
+before_script: ./node_modules/.bin/grunt getRedis
