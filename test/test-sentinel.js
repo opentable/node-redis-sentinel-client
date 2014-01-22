@@ -9,6 +9,8 @@ var PORT = 8379;
 var should = require('should');
 var RedisSentinel = require('../index');
 
+var pidHelpers = require('./pid-helpers');
+
 // test helpers shared with node_redis tests
 var testUtils = require('redis/test_utils.js'),
     require_string = testUtils.require_string,
@@ -20,23 +22,34 @@ var MockLogger = testUtils.MockLogger;
 
 suite('RedisSentinelClient', function(){
 
+  before(function(done){
+    this.timeout(20000);
+    pidHelpers.startCluster(done);
+  });
+
+
   suite('client', function(){
+    var logger, client, errors;
+
+    before(function(){
+      logger = new MockLogger();
+      // logger.toConsole = true;
+
+      client = RedisSentinel.createClient(PORT, HOST, {
+        logger: logger,
+        debug: true
+      });
+
+      errors = [];
+
+      client.on('error', function(error){
+        errors.push(error);
+      });
+
+    });
+
     test('is exported', function(){
       should(typeof RedisSentinel.RedisSentinelClient === 'function');
-    });
-
-    var logger = new MockLogger();
-    // logger.toConsole = true;
-
-    var client = RedisSentinel.createClient(PORT, HOST, {
-      logger: logger,
-      debug: true
-    });
-
-    var errors = [];
-
-    client.on('error', function(error){
-      errors.push(error);
     });
 
     test('is a sentinel client', function(){
@@ -147,18 +160,21 @@ suite('RedisSentinelClient', function(){
   });
 
 
-
   // commands should pass thru to master client
   suite('commands', function(){
-    var client = RedisSentinel.createClient(PORT, HOST, {
-      logger: new MockLogger(),
-      debug: false
-    });
+    var client, errors;
 
-    var errors = [];
+    before(function(){
+      client = RedisSentinel.createClient(PORT, HOST, {
+        logger: new MockLogger(),
+        debug: false
+      });
 
-    client.on('error', function(error){
-      errors.push(error);
+      errors = [];
+
+      client.on('error', function(error){
+        errors.push(error);
+      });
     });
 
 
