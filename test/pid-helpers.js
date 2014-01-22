@@ -3,13 +3,16 @@ helpers for handling redis-server processes.
 going semi-colon free.
 */
 
-var child_process = require('child_process')
+var async = require('async'),
+    child_process = require('child_process'),
+    fs = require('fs'),
+    redisVersion = process.env.REDIS_VERSION;
 
 
 /*
 @param patterns: array of, or single, regex pattern(s) or string(s). (has to match all)
 */
-module.exports.killProc = function killProc(patterns, callback){
+function killProc(patterns, callback){
 
   child_process.exec('ps -e -o pid,command', function(error, stdout, stderr){
     if (error) return callback(error)
@@ -69,3 +72,46 @@ module.exports.killProc = function killProc(patterns, callback){
   })
 }
 
+function killOldRedises(callback){
+  async.series([
+  function(ok){
+    killProc(['redis-server', '5379'], ok)
+  },
+  function(ok){
+    killProc(['redis-server', '5380'], ok)
+  },
+  function(ok){
+    killProc(['redis-sentinel', '8379'], ok)
+  }
+], function(error, pids){
+    if (error) throw new Error(error);
+
+    setTimeout(startCluster, 1000, callback);
+  });
+}
+
+function startCluster(callback){
+
+  console.log('Starting Redises');
+
+  var redisServer = './tmp/redis-' + redisVersion + '/src/redis-server';
+  var redisSentinel = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
+  master = child_process.spawn(redisServer, ['--port', '5379', '--save', '""']);  
+  slave = child_process.spawn(redisServer, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);  
+
+  sentinelConf = fs.openSync('./tmp/sentinel.conf', 'w');
+  fs.writeSync(sentinelConf,
+                 'port 8379\n' +
+                 'sentinel monitor mymaster 127.0.0.1 5379 1\n' + 
+                 'sentinel down-after-milliseconds mymaster 5000\n' +
+                 'sentinel failover-timeout mymaster 6000\n' +
+                 'sentinel parallel-syncs mymaster 1\n');
+  fs.closeSync(sentinelConf);
+  sentinel = child_process.spawn(redisSentinel, ['./tmp/sentinel.conf']);
+
+setTimeout(callback, 10000, null, {"master": master, "slave": slave, "sentinel": sentinel});
+}
+
+module.exports.startCluster = function(callback){
+  killOldRedises(callback);
+}

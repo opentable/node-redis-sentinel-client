@@ -15,8 +15,6 @@ var should = require('should'),
     events = require('events'),
     util = require('util'),
     child_process = require('child_process'),
-    fs = require('fs'),
-    redisVersion = process.env.REDIS_VERSION,
     _suite
 
 
@@ -50,50 +48,13 @@ suite('sentinel failover', function(){
       _suite.events.on('error', function(error){
         throw error;
       })
-      killOldRedises();
+      pidHelpers.startCluster(finishBeforeHook);
     }
 
-    function killOldRedises(){
-      async.series([
-      function(ok){
-        pidHelpers.killProc(['redis-server', '5379'], ok)
-      },
-      function(ok){
-        pidHelpers.killProc(['redis-server', '5380'], ok)
-      },
-      function(ok){
-        pidHelpers.killProc(['redis-sentinel', '8379'], ok)
-      }
-    ], function(error, pids){
-        if (error) return _suite.emitError(error)
-
-        setTimeout(startCluster, 1000);
-      });
-    }
-
-    function startCluster(){
-
-      console.log('Starting Redises');
-
-      var redisServer = './tmp/redis-' + redisVersion + '/src/redis-server';
-      var redisSentinel = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
-      _suite.master = child_process.spawn(redisServer, ['--port', '5379', '--save', '""']);  
-      _suite.slave = child_process.spawn(redisServer, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);  
-
-      sentinelConf = fs.openSync('./tmp/sentinel.conf', 'w');
-      fs.writeSync(sentinelConf,
-                     'port 8379\n' +
-                     'sentinel monitor mymaster 127.0.0.1 5379 1\n' + 
-                     'sentinel down-after-milliseconds mymaster 5000\n' +
-                     'sentinel failover-timeout mymaster 6000\n' +
-                     'sentinel parallel-syncs mymaster 1\n');
-      fs.closeSync(sentinelConf);
-      _suite.sentinel = child_process.spawn(redisSentinel, ['./tmp/sentinel.conf']);
-
-    setTimeout(finishBeforeHook, 10000);
-    }
-
-    function finishBeforeHook(){
+    function finishBeforeHook(err, cluster){
+    _suite.sentinel = cluster.sentinel;
+    _suite.master = cluster.master;
+    _suite.slave = cluster.slave;
     _suite.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
 
     // catch & log events
