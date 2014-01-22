@@ -183,7 +183,7 @@ suite('sentinel failover', function(){
     _suite.pubChannel = "test-sentinel-channel-" + Math.round(Math.random() * 1000000)
     console.log("Test pub/sub channel", _suite.pubChannel)
 
-    _suite.subscriberClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.subscriberClient = redis.createClient(5380, '127.0.0.1');
 
     _suite.subscriberClient.on('error', _suite.emitError);
 
