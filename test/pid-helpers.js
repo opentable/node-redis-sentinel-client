@@ -28,7 +28,7 @@ function killProc(patterns, callback){
     
     for (l in procList) {
       procLine = procList[l],
-      procParts = procLine.match(/^([0-9]*)\s(.*)$/) || []
+      procParts = procLine.match(/^\s*([0-9]*)\s(.*)$/) || []
       
       proc = {
         pid: procParts[1] || null,
