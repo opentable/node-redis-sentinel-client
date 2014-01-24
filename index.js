@@ -125,21 +125,19 @@ function RedisSentinelClient(options) {
   // one client to query ('talker'), one client to subscribe ('listener').
   // these are standard redis clients.
   // talker is used by reconnect() below
-  this.sentinelTalker = new RedisSingleClient.createClient(options.port, options.host);
-  this.sentinelTalker.on('connect', function(){
-    self.debug('connected to sentinel talker');
-  });
-  this.sentinelTalker.on('error', function(error){
-    error.message = self.myName + " talker error: " + error.message;
-    self.onError.call(self, error);
-  });
-  this.sentinelTalker.on('end', function(){
-    self.debug('sentinel talker disconnected');
-    // @todo emit something?
-    // @todo does it automatically reconnect? (supposed to)
-  });
+  self.connectToSentinelListener();
+  self.connectToSentinelTalker();
 
-  var sentinelListener = new RedisSingleClient.createClient(options.port, options.host);
+  // Connect on load
+  this.reconnect();
+
+}
+
+util.inherits(RedisSentinelClient, events.EventEmitter);
+
+RedisSentinelClient.prototype.connectToSentinelListener = function connectToSentinelListener(){
+  var self = this;
+  var sentinelListener = new RedisSingleClient.createClient(this.options.port, this.options.host);
   sentinelListener.on('connect', function(){
     self.debug('connected to sentinel listener');
   });
@@ -151,9 +149,6 @@ function RedisSentinelClient(options) {
     self.debug('sentinel listener disconnected');
     // @todo emit something?
   });
-
-  // Connect on load
-  this.reconnect();
 
   // Subscribe to all messages
   sentinelListener.psubscribe('*');
@@ -186,7 +181,23 @@ function RedisSentinelClient(options) {
 
 }
 
-util.inherits(RedisSentinelClient, events.EventEmitter);
+RedisSentinelClient.prototype.connectToSentinelTalker = function  connectToSeninelTalker(){
+  var self = this;
+  this.sentinelTalker = new RedisSingleClient.createClient(this.options.port, this.options.host);
+  this.sentinelTalker.on('connect', function(){
+    self.debug('connected to sentinel talker');
+  });
+  this.sentinelTalker.on('error', function(error){
+    error.message = self.myName + " talker error: " + error.message;
+    self.onError.call(self, error);
+  });
+  this.sentinelTalker.on('end', function(){
+    self.debug('sentinel talker disconnected');
+    // @todo emit something?
+    // @todo does it automatically reconnect? (supposed to)
+  });
+}
+
 
 
 // [re]connect activeMasterClient to the master.
