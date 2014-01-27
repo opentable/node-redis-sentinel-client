@@ -185,15 +185,6 @@ suite('sentinel failover', function(){
     setup();
   }); //setup
 
-    after(function(){
-
-      _suite.master.kill();
-      _suite.slave.kill();
-      _suite.sentinel.kill();
-
-    });
-  
-
   // sanity check
   suite('helpers', function(){
     test('checkIntegrity', function(){
