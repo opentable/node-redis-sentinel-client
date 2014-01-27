@@ -3,7 +3,7 @@ test a failover scenario
 should lose no data (atomic set/get or pub/sub) during the failover.
 
 to use this,
-  - make sure that ports 5379, 5380, and 8379 are free and open to localhost
+  - make sure that ports 5379, 5380, 8379, 8380, 8381 are free and open to localhost
   - ./node_modules/.bin/mocha --ui tdd --reporter spec --bail test/test-failover
 */
 
@@ -52,7 +52,7 @@ suite('sentinel failover', function(){
     }
 
     function finishBeforeHook(err, cluster){
-    _suite.sentinel = cluster.sentinel;
+    _suite.sentinel1 = cluster.sentinel1;
     _suite.master = cluster.master;
     _suite.slave = cluster.slave;
     _suite.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
@@ -161,6 +161,13 @@ suite('sentinel failover', function(){
       })
     })
 
+    _suite.sentinelSubscriberClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.sentinelSubscriberClient.subscribe(_suite.pubChannel);
+    _suite.sentinelSubscriberClient.on('error', _suite.emitError);
+    _suite.sentinelSubscriberClient.once('ready', function(){
+      _suite.sentinelSubscriberClient.subscribe(_suite.pubChannel);
+    });
+
     _suite.doPub = function doPub(ioCount){
       console.log("-- pub", ioCount);
       var n = ioCount.toString();
@@ -168,6 +175,7 @@ suite('sentinel failover', function(){
         if (error) _suite.emitError(error)
       })
     }
+
     // wait for clients to be ready
     async.parallel([
       function(ready){
@@ -317,6 +325,19 @@ suite('sentinel failover', function(){
         }
       })
     })
+
+    //some messages will be missed during failover, this is invedable as a part of redis.
+    //this makes sure that we are still getting new messages
+    test('continuous sub still subscribed', function(done){
+      this.timeout(2000);
+      var _done = false; //only once
+      _suite.sentinelSubscriberClient.on('message', function(channel, message){
+        if (+message >= _suite.ioCount && !_done){
+          _done = true;
+          done();
+        }
+      });
+    });
   })
 
 });

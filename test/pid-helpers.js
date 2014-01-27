@@ -107,7 +107,6 @@ function startCluster(callback){
 
   var master = child_process.spawn(redisServer, ['--port', '5379', '--save', '""']);
   var slave1 = child_process.spawn(redisServer, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);
-  var slave2 = child_process.spawn(redisServer, ['--port', '5381', '--save', '""', '--slaveof', 'localhost', '5379']);
 
   var sentinel1Conf = fs.openSync('./tmp/sentinel1.conf', 'w');
   var sentinel2Conf = fs.openSync('./tmp/sentinel2.conf', 'w');
@@ -153,7 +152,6 @@ function startCluster(callback){
               {
                 "master": master,
                 "slave1": slave1,
-                "slave2": slave2,
                 "sentinel1": sentinel1,
                 "sentinel2": sentinel2,
                 "sentinel3": sentinel3
