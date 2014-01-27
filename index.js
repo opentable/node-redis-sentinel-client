@@ -201,8 +201,7 @@ RedisSentinelClient.prototype.connectToSentinelTalker = function  connectToSenin
 
 
 // [re]connect activeMasterClient to the master.
-// destroys the previous connection and replaces w/ a new one,
-// (transparently to the user)
+// changes host and port and attempts a reconnect,
 // but only if host+port have changed.
 RedisSentinelClient.prototype.reconnect = function reconnect(onReconnectCallback) {
   var self = this;

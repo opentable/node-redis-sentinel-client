@@ -304,7 +304,7 @@ suite('sentinel failover', function(){
       })
     })
 
-    test('continous pub/sub lost no data', function(done){
+    test('continous pub lost no data', function(done){
       this.timeout(2000)
       var _done = false;    // only once
       this.events.on('message', function(message){
