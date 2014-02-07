@@ -5,8 +5,16 @@ going semi-colon free.
 
 var async = require('async'),
     child_process = require('child_process'),
-    fs = require('fs'),
-    redisVersion = process.env.REDIS_VERSION;
+    fs = require('fs');
+
+    if(process.env.REDIS_VERSION){
+      var redisVersion = process.env.REDIS_VERSION;
+      var redisServerExec = './tmp/redis-' + redisVersion + '/src/redis-server';
+      var redisSentinelExec = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
+    } else {
+      var redisServerExec = 'redis-server';
+      var redisSentinelExec = 'redis-sentinel';
+    }
 
 /*
 @param patterns: array of, or single, regex pattern(s) or string(s). (has to match all)
@@ -102,11 +110,8 @@ function startCluster(callback){
 
   console.log('Starting Redises');
 
-  var redisServer = './tmp/redis-' + redisVersion + '/src/redis-server';
-  var redisSentinel = './tmp/redis-' + redisVersion + '/src/redis-sentinel';
-
-  var master = child_process.spawn(redisServer, ['--port', '5379', '--save', '""']);
-  var slave1 = child_process.spawn(redisServer, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);
+  var master = child_process.spawn(redisServerExec, ['--port', '5379', '--save', '""']);
+  var slave1 = child_process.spawn(redisServerExec, ['--port', '5380', '--save', '""', '--slaveof', 'localhost', '5379']);
 
   var sentinel1Conf = fs.openSync('./tmp/sentinel1.conf', 'w');
   var sentinel2Conf = fs.openSync('./tmp/sentinel2.conf', 'w');
@@ -134,14 +139,13 @@ function startCluster(callback){
   fs.closeSync(sentinel2Conf);
   fs.closeSync(sentinel3Conf);
 
-  var sentinel1 = child_process.spawn(redisSentinel, ['./tmp/sentinel1.conf']);
-  var sentinel2 = child_process.spawn(redisSentinel, ['./tmp/sentinel2.conf']);
-  var sentinel3 = child_process.spawn(redisSentinel, ['./tmp/sentinel3.conf']);
+  var sentinel1 = child_process.spawn(redisSentinelExec, ['./tmp/sentinel1.conf']);
+  var sentinel2 = child_process.spawn(redisSentinelExec, ['./tmp/sentinel2.conf']);
+  var sentinel3 = child_process.spawn(redisSentinelExec, ['./tmp/sentinel3.conf']);
 
   process.on('exit', function () {
     master.kill();
     slave1.kill();
-    slave2.kill();
     sentinel1.kill();
     sentinel2.kill();
     sentinel3.kill();
