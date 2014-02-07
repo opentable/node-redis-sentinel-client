@@ -55,7 +55,11 @@ suite('sentinel failover', function(){
     _suite.sentinel1 = cluster.sentinel1;
     _suite.master = cluster.master;
     _suite.slave = cluster.slave;
-    _suite.sentinelClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.sentinelClient = RedisSentinel.createClient([{'host': '127.0.0.1', 'port': 8379}, 
+                                                       {'host': '127.0.0.1', 'port': 8380},
+                                                       {'host': '127.0.0.1', 'port': 8381}]);
+
+
 
     // catch & log events
     _suite.eventLog = [];
@@ -161,7 +165,9 @@ suite('sentinel failover', function(){
       })
     })
 
-    _suite.sentinelSubscriberClient = RedisSentinel.createClient(8379, '127.0.0.1');
+    _suite.sentinelSubscriberClient = RedisSentinel.createClient([{'host': '127.0.0.1', 'port': 8379}, 
+                                                                  {'host': '127.0.0.1', 'port': 8380},
+                                                                  {'host': '127.0.0.1', 'port': 8381}]);
     _suite.sentinelSubscriberClient.subscribe(_suite.pubChannel);
     _suite.sentinelSubscriberClient.on('error', _suite.emitError);
     _suite.sentinelSubscriberClient.once('ready', function(){
@@ -252,12 +258,19 @@ suite('sentinel failover', function(){
       console.log("Killing master")
 
       _suite.master.kill();
+      _suite.sentinel1.kill();
     })
 
     test('should get \'down-start\'', function(done){
       this.timeout(5000)
-      this.waitForEvent('down-start', done)
-    })
+      var doneCalled = false;
+      _suite.sentinelClient.on('down-start', function(){
+        if(!doneCalled){
+          doneCalled = true;
+          done();
+        }
+      });
+    });
 
 
     // NOTE, failover delay is based on 'down-after-milliseconds'

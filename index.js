@@ -1,4 +1,4 @@
-/**
+/*
 Redis Sentinel client, add-on for node_redis client.
 See readme for details/usage.
 */
@@ -32,16 +32,21 @@ function RedisSentinelClient(options) {
 
   var self = this;
 
-  this.options = options = options || {};
+  self.options = options = options || {};
 
-  this.options.masterName = this.options.masterName || 'mymaster';
+  self.options.masterName = self.options.masterName || 'mymaster';
 
   self.emitMasterErrors = false;
 
   // no socket support for now (b/c need multiple connections).
-  if (options.port == null || options.host == null) {
-    throw new Error("Sentinel client needs a host and port");
-  }
+  console.log(options.connections);
+  options.connections.forEach(function(connection, index){
+    if (connection.port == null || connection.host == null) {
+      throw new Error("Sentinel client needs a host and port");
+    }
+  });
+
+  self.activeSentinelAddress = 0;
 
 
   // if debugging is enabled for sentinel client, enable master client's too.
@@ -91,7 +96,7 @@ function RedisSentinelClient(options) {
 
 
   // used for logging & errors
-  this.myName = 'sentinel-' + this.options.host + ':' + this.options.port + '-' + this.options.masterName;
+  self.myName = 'sentinel-' + self.options.host + ':' + self.options.port + '-' + self.options.masterName;
 
 
   /*
@@ -125,35 +130,31 @@ function RedisSentinelClient(options) {
   // one client to query ('talker'), one client to subscribe ('listener').
   // these are standard redis clients.
   // talker is used by reconnect() below
-  self.connectToSentinelListener();
-  self.connectToSentinelTalker();
-
-  // Connect on load
-  this.reconnect();
-
+  self.connectToSentinel();
 }
 
 util.inherits(RedisSentinelClient, events.EventEmitter);
 
-RedisSentinelClient.prototype.connectToSentinelListener = function connectToSentinelListener(){
+RedisSentinelClient.prototype.connectToSentinel = function connectToSentinel(){
   var self = this;
-  var sentinelListener = new RedisSingleClient.createClient(this.options.port, this.options.host);
-  sentinelListener.on('connect', function(){
+  console.log('defining Listener');
+  self.sentinelListener = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
+  self.sentinelListener.on('connect', function(){
     self.debug('connected to sentinel listener');
   });
-  sentinelListener.on('error', function(error){
+  self.sentinelListener.on('error', function(error){
     error.message = self.myName + " listener error: " + error.message;
     self.onError(error);
   });
-  sentinelListener.on('end', function(){
+  self.sentinelListener.on('end', function(){
     self.debug('sentinel listener disconnected');
-    // @todo emit something?
+    setImmediate(self.reconnectSentinel, self);
   });
 
   // Subscribe to all messages
-  sentinelListener.psubscribe('*');
+  self.sentinelListener.psubscribe('*');
 
-  sentinelListener.on('pmessage', function(channel, msg) {
+  self.sentinelListener.on('pmessage', function(channel, msg, argy) {
     self.debug('sentinel message', msg);
 
     // pass up, in case app wants to respond
@@ -179,26 +180,58 @@ RedisSentinelClient.prototype.connectToSentinelListener = function connectToSent
     }
   });
 
-}
-
-RedisSentinelClient.prototype.connectToSentinelTalker = function  connectToSeninelTalker(){
-  var self = this;
-  this.sentinelTalker = new RedisSingleClient.createClient(this.options.port, this.options.host);
-  this.sentinelTalker.on('connect', function(){
+  console.log('defining talker');
+  self.sentinelTalker = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
+  self.sentinelTalker.on('connect', function(){
     self.debug('connected to sentinel talker');
   });
-  this.sentinelTalker.on('error', function(error){
+  self.sentinelTalker.on('error', function(error){
     error.message = self.myName + " talker error: " + error.message;
     self.onError.call(self, error);
   });
-  this.sentinelTalker.on('end', function(){
+  self.sentinelTalker.on('end', function(){
     self.debug('sentinel talker disconnected');
-    // @todo emit something?
-    // @todo does it automatically reconnect? (supposed to)
+    setImmediate(self.reconnectSentinel, self);
   });
+  
+  // Connect on load
+  self.reconnect();
 }
 
+RedisSentinelClient.prototype.reconnectSentinel = function reconnectSentinel(self){
+  if(self.sentinelTalker.ready && self.sentinelListener.ready){
+    return;
+  } else if(self.sentinelTalker.ready || self.sentinelListener.ready){
+    self.reconnectDeadSentinel(); 
+  } else if(!(self.sentinelTalker.ready && self.sentinelListener.ready)){
+    self.incrementActiveSentinel();
+    self.reconnectDeadSentinel();
+  }
+}
 
+RedisSentinelClient.prototype.incrementActiveSentinel = function incrementActiveSentinel(){ 
+  var self = this;
+  if(self.activeSentinelAddress < self.options.connections.length - 1){
+    self.activeSentinelAddress++;
+  } else {
+    self.activeSentinelAddress = 0;
+  }
+}
+
+RedisSentinelClient.prototype.reconnectDeadSentinel = function reconnectDeadSentinel(){
+  var self = this;
+  if(!self.sentinelTalker.ready){
+    // reconfigure it
+    self.sentinelTalker.host = self.options.connections[self.activeSentinelAddress].host;
+    self.sentinelTalker.port = self.options.connections[self.activeSentinelAddress].port;
+    self.sentinelTalker.forceReconnectionAttempt();
+  }
+  if(!self.sentinelListener.ready){
+    self.sentinelListener.host = self.options.connections[self.activeSentinelAddress].host;
+    self.sentinelListener.port = self.options.connections[self.activeSentinelAddress].port;
+    self.sentinelListener.forceReconnectionAttempt();
+  }
+}
 
 // [re]connect activeMasterClient to the master.
 // changes host and port and attempts a reconnect,
@@ -310,7 +343,7 @@ var Multi = RedisSingleClient.Multi;
 
 RedisSentinelClient.prototype.multi =
 RedisSentinelClient.prototype.MULTI = function (args) {
-  return new Multi(this.activeMasterClient, args);
+  return new Multi(self.activeMasterClient, args);
 };
 
 ['hmget', 'hmset', 'done'].forEach(function(staticProp){
@@ -352,7 +385,8 @@ RedisSentinelClient.prototype.getMaster = function getMaster() {
 // log(type, msgs...)
 // type is 'info', 'error', 'debug' etc
 RedisSentinelClient.prototype.log = function log() {
-  var logger = this.options.logger || console;
+  var self = this;
+  var logger = self.options.logger || console;
   var args = Array.prototype.slice.call(arguments);
   logger.log.apply(logger, args);
 };
@@ -379,21 +413,20 @@ exports.RedisSentinelClient = RedisSentinelClient;
 // called by RedisClient::createClient() when options.sentinel===true
 // similar args for backwards compat,
 // but does not support sockets (see above)
-exports.createClient = function (port, host, options) {
+exports.createClient = function (connections, options) {
   // allow the arg structure of RedisClient, but collapse into options for constructor.
   //
   // note, no default_host or default_port,
   // see http://redis.io/topics/sentinel.
   // also no net_client or allowNoSocket, see above.
   // this could be a problem w/ backwards compatibility.
-  if (arguments.length === 1) {
-    options = arguments[0] || {};
-  }
-  else {
+  console.log(options);
     options = options || {};
-    options.port = port;
-    options.host = host;
-  }
+    if(Array.isArray(connections)){
+      options.connections = connections;
+    } else {
+      options.connections = [connections];
+    }
 
   return new RedisSentinelClient(options);
 };
