@@ -35,7 +35,7 @@ suite('RedisSentinelClient', function(){
       logger = new MockLogger();
       // logger.toConsole = true;
 
-      client = RedisSentinel.createClient(PORT, HOST, {
+      client = RedisSentinel.createClient({port:PORT, host:HOST}, {
         logger: logger,
         debug: true
       });
@@ -118,8 +118,8 @@ suite('RedisSentinelClient', function(){
 
 
   suite('createClient', function(){
-    test('should handle 3 parameters', function(done){
-      var client = RedisSentinel.createClient(PORT, HOST, {
+    test('should handle 2 parameters', function(done){
+      var client = RedisSentinel.createClient({port:PORT, host:HOST}, {
         logger: new MockLogger(),
         fakeOption: 'Z'
       });
@@ -131,15 +131,16 @@ suite('RedisSentinelClient', function(){
 
       client.on('reconnected', function(){
         clearTimeout(timeout);
-        should.equal(this.options.host, HOST);
-        should.equal(this.options.port, PORT);
+        console.log(this.options);
+        should.equal(this.options.connections[0].host, HOST);
+        should.equal(this.options.connections[0].port, PORT);
         should.equal(this.options.fakeOption, 'Z');
         done();
       });
     });
 
     test('should handle 1 parameter', function(done){
-      var client = RedisSentinel.createClient(PORT, HOST, {
+      var client = RedisSentinel.createClient({port:PORT, host:HOST}, {
         logger: new MockLogger(),
         fakeOption: 'Z'
       });
@@ -151,8 +152,8 @@ suite('RedisSentinelClient', function(){
 
       client.on('reconnected', function(){
         clearTimeout(timeout);
-        should.equal(this.options.host, HOST);
-        should.equal(this.options.port, PORT);
+        should.equal(this.options.connections[0].host, HOST);
+        should.equal(this.options.connections[0].port, PORT);
         should.equal(this.options.fakeOption, 'Z');
         done();
       });
@@ -165,7 +166,7 @@ suite('RedisSentinelClient', function(){
     var client, errors;
 
     before(function(){
-      client = RedisSentinel.createClient(PORT, HOST, {
+      client = RedisSentinel.createClient({port:PORT, host:HOST}, {
         logger: new MockLogger(),
         debug: false
       });
