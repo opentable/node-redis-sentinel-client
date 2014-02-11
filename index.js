@@ -39,7 +39,6 @@ function RedisSentinelClient(options) {
   self.emitMasterErrors = false;
 
   // no socket support for now (b/c need multiple connections).
-  console.log(options.connections);
   options.connections.forEach(function(connection, index){
     if (connection.port == null || connection.host == null) {
       throw new Error("Sentinel client needs a host and port");
@@ -137,7 +136,6 @@ util.inherits(RedisSentinelClient, events.EventEmitter);
 
 RedisSentinelClient.prototype.connectToSentinel = function connectToSentinel(){
   var self = this;
-  console.log('defining Listener');
   self.sentinelListener = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
   self.sentinelListener.on('connect', function(){
     self.debug('connected to sentinel listener');
@@ -180,7 +178,6 @@ RedisSentinelClient.prototype.connectToSentinel = function connectToSentinel(){
     }
   });
 
-  console.log('defining talker');
   self.sentinelTalker = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
   self.sentinelTalker.on('connect', function(){
     self.debug('connected to sentinel talker');
@@ -420,7 +417,6 @@ exports.createClient = function (connections, options) {
   // see http://redis.io/topics/sentinel.
   // also no net_client or allowNoSocket, see above.
   // this could be a problem w/ backwards compatibility.
-  console.log(options);
     options = options || {};
     if(Array.isArray(connections)){
       options.connections = connections;
