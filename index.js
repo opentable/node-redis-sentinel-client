@@ -136,7 +136,7 @@ util.inherits(RedisSentinelClient, events.EventEmitter);
 
 RedisSentinelClient.prototype.connectToSentinel = function connectToSentinel(){
   var self = this;
-  self.sentinelListener = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
+  self.sentinelListener = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].host);
   self.sentinelListener.on('connect', function(){
     self.debug('connected to sentinel listener');
   });
@@ -178,7 +178,7 @@ RedisSentinelClient.prototype.connectToSentinel = function connectToSentinel(){
     }
   });
 
-  self.sentinelTalker = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].port);
+  self.sentinelTalker = new RedisSingleClient.createClient(self.options.connections[self.activeSentinelAddress].port, self.options.connections[self.activeSentinelAddress].host);
   self.sentinelTalker.on('connect', function(){
     self.debug('connected to sentinel talker');
   });
